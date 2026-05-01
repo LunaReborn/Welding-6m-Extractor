@@ -1,26 +1,6 @@
-# 焊接文档 6M 专有词汇抽取工具
+# Welding 6M Extractor
 
-用于从焊接相关文档中抽取“人、机、料、法、环、测”六类专有词汇，并导出 JSON 和 Excel。
-
-## 目录结构
-
-```text
-project/
-  cli.py
-  engine/
-    document_loader.py
-    chunker.py
-    llm_client.py
-    extractor_6m.py
-    normalizer.py
-    validator.py
-    exporter.py
-  prompts/
-    welding_6m_extract.txt
-    welding_6m_review.txt
-  outputs/
-  data/
-```
+从焊接相关文档中抽取“人、机、料、法、环、测”六类专有词汇，支持 Ollama 和 OpenAI API。
 
 ## 安装
 
@@ -28,63 +8,58 @@ project/
 pip install -r requirements.txt
 ```
 
-## 使用 Ollama
-
-先启动 Ollama，并拉取模型：
+## 基本运行
 
 ```bash
-ollama serve
-ollama pull qwen2.5:7b
+python cli.py --file data/sample_welding.txt --extractor ollama --model qwen2.5:7b --output outputs
 ```
 
-运行：
+## 推荐运行方式
+
+长文档建议指定“每多少段保存一次”，避免中途异常导致结果全部丢失：
 
 ```bash
-python cli.py --file data/氩弧焊标准作业指导书.docx --extractor ollama --model qwen2.5:7b --output outputs
+python cli.py \
+  --file data/sample_welding.txt \
+  --extractor ollama \
+  --model qwen2.5:7b \
+  --output outputs \
+  --save-every 50 \
+  --max-retries 1 \
+  --timeout 180
 ```
 
-启用二阶段复核：
+含义：
 
-```bash
-python cli.py --file data/氩弧焊标准作业指导书.docx --extractor ollama --review --output outputs
-```
+- `--save-every 50`：每处理 50 个文本段保存一次 JSON 和 Excel。
+- `--max-retries 1`：请求异常时额外重试 1 次，也就是最多请求 2 次。
+- `--timeout 180`：单次 LLM 请求最多等待 180 秒。
+- `--save-every 0`：只在全部结束时保存。
 
-## 使用 OpenAI API
+## 异常处理策略
 
-```bash
-set OPENAI_API_KEY=你的key
-python cli.py --file data/氩弧焊标准作业指导书.docx --extractor openai --model gpt-4o-mini --output outputs
-```
+当前版本适合长文档批处理：
 
-Linux/macOS：
+1. 请求异常，例如超时、网络波动、Ollama 偶发无响应：默认重试一次。
+2. 重试后仍失败：跳过当前文本段，继续下一段。
+3. JSON 解析失败：不重试，直接跳过当前文本段，继续下一段。
+4. 按 `--save-every` 指定的段数增量保存，最后再保存一次完整结果。
 
-```bash
-export OPENAI_API_KEY=你的key
-python cli.py --file data/氩弧焊标准作业指导书.docx --extractor openai --model gpt-4o-mini --output outputs
-```
-
-## 输出文件
+## 输出
 
 ```text
-outputs/文档名_6m_terms.json
-outputs/文档名_6m_terms.xlsx
+outputs/
+  sample_welding_6m_terms.json
+  sample_welding_6m_terms.xlsx
 ```
 
 Excel 字段：
 
-| 字段 | 说明 |
-|---|---|
-| 术语 | 抽取到的专有词汇 |
-| 类别 | 人/机/料/法/环/测 |
-| 归一化术语 | 同义词合并后的标准术语 |
-| 原文片段 | 术语所在上下文 |
-| 来源文档 | 输入文件名 |
-| 文本段 | chunk 编号 |
-| 置信度 | high/medium/low |
-| 说明 | 预留解释字段 |
-
-## 建议
-
-- 如果本地小模型漏抽较多，建议打开 `--review`。
-- 如果术语重复较多，在 `engine/normalizer.py` 的 `SYNONYMS` 中持续沉淀同义词。
-- 如果抽出普通词较多，在 `engine/validator.py` 的 `STOP_WORDS` 中增加停用词。
+- 术语
+- 类别
+- 归一化术语
+- 原文片段
+- 来源文档
+- 文本段
+- 置信度
+- 说明
